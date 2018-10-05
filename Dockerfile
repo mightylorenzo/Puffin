@@ -59,8 +59,6 @@ WORKDIR /home/puffin_user/tmp/puffin-test
 RUN cp /home/puffin_user/built/puffin/examples/simple/1D/OptCommV165pp65-70/fig1/*.in .
 RUN chmod u+x /home/puffin_user/tmp/puffin-src/docker-entrypoint.sh
 
-# ENTRYPOINT [ "sh", "-c", "mpirun -np 4 /home/puffin_user/built/puffin/bin/puffin" ]
 ENTRYPOINT ["/home/puffin_user/tmp/puffin-src/docker-entrypoint.sh"]
-             
 CMD ["2", "f1main.in"]
 
