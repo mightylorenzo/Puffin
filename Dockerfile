@@ -27,7 +27,7 @@ RUN mkdir /home/puffin_user/tmp/pFUnit
 RUN mkdir /home/puffin_user/built/
 RUN mkdir /home/puffin_user/built/puffin
 RUN mkdir /home/puffin_user/built/pfunit-parallel
-RUN mkdir /home/puffin_user/project # for running in Puffin
+RUN mkdir /home/puffin_user/project
 COPY . /home/puffin_user/tmp/puffin-src
 RUN chown -R puffin_user /home/puffin_user
 # Grant sudo access without password
@@ -55,11 +55,10 @@ RUN cmake -DCMAKE_INSTALL_PREFIX:PATH=/home/puffin_user/built/puffin \
 RUN make && make install
 
 ENV OMP_NUM_THREADS=1
-RUN mpirun -np 4 /home/puffin_user/tmp/puffin-build/test/testexe
-WORKDIR /home/puffin_user/project
 
-WORKDIR /home/puffin_user/tmp/puffin-test
-RUN cp /home/puffin_user/built/puffin/examples/simple/1D/OptCommV165pp65-70/fig1/*.in .
+WORKDIR /home/puffin_user/project
+# Pointless - since when mounting directory this will be overwritten!!!
+#RUN cp /home/puffin_user/built/puffin/examples/simple/1D/OptCommV165pp65-70/fig1/*.in .
 RUN chmod u+x /home/puffin_user/tmp/puffin-src/docker-entrypoint.sh
 
 ENTRYPOINT ["/home/puffin_user/tmp/puffin-src/docker-entrypoint.sh"]
