@@ -27,6 +27,21 @@ integer(kind=ip), parameter, private :: iUndStart_G = 1_ip, &
 public :: getBFields
 private :: adjUndPlace, getBXfield, getBYfield, getBZfield
 
+  type, public :: bfield
+    real(kind=wp) :: taper, alpha0
+    real(kind=wp) :: sZFS, sZFE
+    real(kind=wp) :: kbxSF, kbySF
+    integer(kind=ip), private :: iUndPlace
+    logical :: qUndEnds
+  contains
+    procedure :: getBFields
+    procedure, private :: getBXfield
+    procedure, private :: getBYfield
+    procedure, private :: getBZfield
+    procedure, private :: getActive
+    procedure :: getAlpha
+  end type
+
 contains
 
 !> @author
@@ -77,12 +92,11 @@ contains
 !> @brief
 !> Determine whether we are in the ends or the active section of undulator.
 
-subroutine adjUndPlace(szl, tVars)
-  use typecalcParams, only: fcalcParams
+subroutine adjUndPlace(self, szl)
   use globals, only: qUndEnds_G
   implicit none
-  real(kind=wp) :: szl
-  type(fcalcParams), intent(in) :: tVars
+  class(fbfields), intent(inout) :: self
+  real(kind=wp), intent(in) :: szl
 
   if (qUndEnds_G) then
     if (szl < 0) then
@@ -111,22 +125,22 @@ end subroutine adjUndPlace
 !> @brief
 !> Calculates tuning of wiggler \f$ \alpha \f$
 
-! subroutine getAlpha(tVars, sZ, n2col)
-!   use typecalcParams, only: fcalcParams
-!   implicit none
-!   real(kind=wp), intent(in) :: sZ
-!   type(fcalcParams), intent(in) :: tVars
-!   real(kind=wp), intent(out) :: n2col
-! 
-!   if ((sZ >= tVars%sZFS) .and. (sZ <= tVars%sZFE)) then
-!     n2col = tVars%n2col0  + tVars%undgrad*(sz - tVars%sZFS)  ! linear taper
-!   else if (sZ < tVars%sZFS) then
-!     n2col = tVars%n2col0
-!   else if (sZ > tVars%sZFE) then
-!     tVars%n2col = tVars%n2col0  + tVars%undgrad*(tVars%sZFE - tVars%sZFS)
-!   end if
-! 
-! end subroutine getAlpha
+function getAlpha(self, sZ) result(alpha)
+  implicit none
+  real(kind=wp), intent(in) :: sZ
+  real(kind=wp) :: alpha
+  class(fbfields), intent(in) :: self
+  real(kind=wp), intent(out) :: n2col
+
+  if ((sZ >= self%sZFS) .and. (sZ <= self%sZFE)) then
+    alpha = self%n2col0  + self%undgrad*(sz - self%sZFS)  ! linear taper
+  else if (sZ < self%sZFS) then
+    alpha = self%n2col0
+  else if (sZ > self%sZFE) then
+    alpha = self%n2col0  + self%undgrad*(self%sZFE - self%sZFS)
+  end if
+  return
+end function getAlpha
 
 
 subroutine getBXfield(sx, sy, sz, tVars, bxj)

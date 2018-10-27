@@ -46,7 +46,6 @@ contains
 !> @param[out] sdgam d/dz of scaled energy (gamma) electron coordinates
 !> @param[out] sDADzr d/dz of real (x) component of A_perp
 !> @param[out] sDADzi d/dz of real (-y) component of A_perp
-!> @param[out] qOK Error flag
 
   subroutine getrhs(sz, &
                     sAr, sAi, &
@@ -55,11 +54,11 @@ contains
                     sdx, sdy, sdz2, &
                     sdpr, sdpi, sdgam, &
                     sDADzr, sDADzi, &
-                    tVars, tScale)
+                    tVars, tBFields, tScale)
 
   use typeCalcParams, only: fcalcParams
   use typeScale, only: fScale
-  use bfields, only: getBFields
+  use bfields, only: fbfields
   implicit none
 
 !> Inputs %%%
@@ -83,6 +82,7 @@ contains
   real(kind=wp), contiguous,  intent(inout) :: sDADzr(:), sDADzi(:)
   type(fcalcParams), intent(inout) :: tVars
   type(fScale), intent(in) :: tScale
+  type(fbfields), intent(in) :: tBFields
 
   integer(kind=ipl) :: i, z2node
   integer :: error
@@ -93,10 +93,6 @@ contains
   tVars%sField4ElecImag(:) = 0.0_WP
 
 !  call rhs_tmsavers(sz)  ! This can be moved later...
-
-!     Adjust undulator tuning
-
-  call getAlpha(sZ)
 
 !$OMP PARALLEL
 
@@ -149,7 +145,7 @@ contains
 
     if (tVars%qElectronsEvolve) then
 
-        call getBFields(sx, sy, sz, tVars, &
+        call tBFields%getBFields(sx, sy, sz, tScale, &
                         tVars%bxu, tVars%byu, tVars%bzu)
 
         call dz2dz_f(sx, sy, sz2, spr, spi, sgam, tVars, &
