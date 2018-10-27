@@ -20,7 +20,6 @@ USE MacrosGen
 use parBeam
 use remLow
 use grids
-use initConds
 use parallelSetup
 use gtop2
 use addNoise
@@ -465,17 +464,19 @@ SUBROUTINE genBeam(iNMP, iNMP_loc, sigE, alphax, betax, alphay, betay, &
   CALL getIntTypes(iNMP, samLenE, sigE, &
                    iLocalIntegralType)
 
-  CALL getOffsets(sZ,samLenE,sZ2_center,gamma_d,offsets)
-
-!!!!!!!!!! TEMP
-!!!!!!!!!! CENTERING BEAM IN DX/DZ, DY/DZ = 0
-
   offsets(iX_CG) = 0.0_WP
   offsets(iY_CG) = 0.0_WP
   offsets(iPX_CG) = 0.0_WP
   offsets(iPY_CG) = 0.0_WP
   
-!    sZ2_center = offsets(iZ2_CG)
+  if (sZ2_center < (samLenE(iZ2_CG) / 2.0_WP)) then
+    offsets(iZ2_CG) = samLenE(iZ2_CG) / 2.0_WP
+    sZ2_center = offsets(iZ2_CG)
+  else
+    offsets(iZ2_CG) = sZ2_center
+  end if
+
+  offsets(iGam_CG)  = sGammaR_G * gamma_d
     
   CALL genGrids(b_num, sigE,offsets,samLenE,iLocalIntegralType,iNMP, iNMP_loc, &
                 sx_grid, sy_grid, sz2_grid, spx_grid, spy_grid, spz2_grid, &

@@ -15,12 +15,15 @@ use paratype
 use typesAndConstants
 use ArrayFunctions
 use initDataType
+use typeScale
 
 implicit none
 
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ! field vars
+
+type(fScale) :: tScale_G
 
 integer(kind=ip) :: NX_G, NBX_G
 integer(kind=ip) :: NY_G, NBY_G
@@ -304,11 +307,6 @@ real(kind=wp) :: sZFS, sZFE  ! Markers for wiggler ends
 
 ! Indicates which part of the wiggler we're in -
 ! i.e. start, middle or end
-
-integer(kind=ip) :: iUndPlace_G
-integer(kind=ip), parameter :: iUndStart_G = 1_ip, &
-                               iUndEnd_G = 2_ip, &
-                               iUndMain_G = 0_ip
 
 real(kind=wp)  :: diffStep ! Stepsize in zbar used for diffraction 
 

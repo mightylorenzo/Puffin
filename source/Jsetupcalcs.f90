@@ -226,16 +226,6 @@ SUBROUTINE passToGlobals(rho, aw, gamr, lam_w, iNN, &
     undgrad = taper
 
 
-
-
-
-
-
-
-
-
-
-
     cf1_G = sEta_G / sKappa_G**2
 
 
@@ -799,6 +789,8 @@ subroutine calcScaling(srho, saw, sgamr, slam_w, &
   lg_G = lam_w_G / 4.0_WP / pi / srho
   lc_G = lam_r_G / 4.0_WP / pi / srho
 
+  call tScale_G%init(sRho_G, saw_G, sGammaR_G, lam_w_G, &
+                     zUndType_G, fx_G, fy_G)
 
 end subroutine calcScaling
 

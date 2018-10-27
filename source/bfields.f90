@@ -15,8 +15,17 @@
 
 module bfields
 
-use paratype
-use globals
+use paratype, only: wp, ip
+implicit none
+private
+
+integer(kind=ip), private :: iUndPlace_G
+integer(kind=ip), parameter, private :: iUndStart_G = 1_ip, &
+                                        iUndEnd_G = 2_ip, &
+                                        iUndMain_G = 0_ip
+
+public :: getBFields
+private :: adjUndPlace, getBXfield, getBYfield, getBZfield
 
 contains
 
@@ -33,78 +42,147 @@ contains
 !> @param[out] byj scaled b-field in y direction for macroparticles
 !> @param[out] bzj scaled b-field in z direction for macroparticles
 
-  subroutine getBFields(sx, sy, sZ, &
+  subroutine getBFields(sx, sy, sZ, tVars, &
                         bxj, byj, bzj)
+
+  use typecalcParams, only: fcalcParams
+  implicit none
 
 !   subroutine to calculate the scaled magnetic fields
 !   at a given zbar
 
   real(kind=wp), contiguous, intent(in) :: sx(:), sy(:)
   real(kind=wp), intent(in) :: sz
-
+  type(fcalcParams), intent(in) :: tVars
   real(kind=wp), contiguous, intent(out) :: bxj(:), byj(:), bzj(:)
+  real(kind=wp) :: alph
 
-  call getBXfield(sx, sy, sz, bxj)
-  call getBYfield(sx, sy, sz, byj)
-  call getBZfield(sx, sy, sz, bzj)
+  call adjUndPlace(sz, tVars)
+!  call getAlpha(sz, tVars, alph)
+
+  call getBXfield(sx, sy, sz, tVars, bxj)
+  call getBYfield(sx, sy, sz, tVars, byj)
+  call getBZfield(sx, sy, sz, tVars, bzj)
+  
+!  bxj = alph * bxj
+!  byj = alph * byj
+!  bzj = alph * bzj
 
   end subroutine getBFields
 
+!> @author
+!> Lawrence Campbell,
+!> University of Strathclyde,
+!> Glasgow, UK
+!> @brief
+!> Determine whether we are in the ends or the active section of undulator.
+
+subroutine adjUndPlace(szl, tVars)
+  use typecalcParams, only: fcalcParams
+  use globals, only: qUndEnds_G
+  implicit none
+  real(kind=wp) :: szl
+  type(fcalcParams), intent(in) :: tVars
+
+  if (qUndEnds_G) then
+    if (szl < 0) then
+      print*, 'undulator section not recognised, sz < 0!!'
+      stop
+    else if (sZl <= tVars%sZFS) then
+      iUndPlace_G = iUndStart_G
+    else if (sZl >= tVars%sZFE) then
+      iUndPlace_G = iUndEnd_G
+    else if ((sZl > tVars%sZFS) .and. (sZl < tVars%sZFE)) then
+      iUndPlace_G = iUndMain_G
+    else
+      print*, 'undulator section not recognised, sz > sZFE!!'
+      stop
+    end if
+  else
+    iUndPlace_G = iUndMain_G
+  end if
+
+end subroutine adjUndPlace
+
+!> @author
+!> Lawrence Campbell,
+!> University of Strathclyde,
+!> Glasgow, UK
+!> @brief
+!> Calculates tuning of wiggler \f$ \alpha \f$
+
+! subroutine getAlpha(tVars, sZ, n2col)
+!   use typecalcParams, only: fcalcParams
+!   implicit none
+!   real(kind=wp), intent(in) :: sZ
+!   type(fcalcParams), intent(in) :: tVars
+!   real(kind=wp), intent(out) :: n2col
+! 
+!   if ((sZ >= tVars%sZFS) .and. (sZ <= tVars%sZFE)) then
+!     n2col = tVars%n2col0  + tVars%undgrad*(sz - tVars%sZFS)  ! linear taper
+!   else if (sZ < tVars%sZFS) then
+!     n2col = tVars%n2col0
+!   else if (sZ > tVars%sZFE) then
+!     tVars%n2col = tVars%n2col0  + tVars%undgrad*(tVars%sZFE - tVars%sZFS)
+!   end if
+! 
+! end subroutine getAlpha
 
 
+subroutine getBXfield(sx, sy, sz, tVars, bxj)
 
-
-
-
-subroutine getBXfield(sx, sy, sz, bxj)
+  use typecalcParams, only: fcalcParams
+  use typesAndConstants, only: pi
+  implicit none
 
   real(kind=wp), contiguous, intent(in) :: sx(:), sy(:)
   real(kind=wp), intent(in) :: sz
+  type(fcalcParams), intent(in) :: tVars
   real(kind=wp), contiguous, intent(out) :: bxj(:)
 
 !    Local vars:-
 
   real(kind=wp) :: szt
 
-!      cc1 = sqrt(sEta_G) / (2_wp * sRho_G * ky_und_G)
+!      cc1 = sqrt(tVars%eta) / (2_wp * sRho_G * tVars%kyu)
 
 
 
 
   szt = sZ
-  szt = szt / 2_wp / sRho_G
+  szt = szt / 2_wp / tVars%rho
 
 
 !  ####################################################
 !    Curved pole case - planar wiggler with focusing
 !    in both x and y (electron wiggles in x)
 
-  if (zUndType_G == 'curved') then
+  if (tVars%zUndType == 'curved') then
 
     if (iUndPlace_G == iUndStart_G) then
 
 !$OMP WORKSHARE
-      bxj = kx_und_G / ky_und_G * sinh(kx_und_G * sx) &
-            * sinh(ky_und_G * sy) &
+      bxj = tVars%kxu / tVars%kyu * sinh(tVars%kxu * sx) &
+            * sinh(tVars%kyu * sy) &
             * szt / 4_wp / pi * sin(szt)
 !$OMP END WORKSHARE
 
     else if (iUndPlace_G == iUndEnd_G) then
 
-      szt = sZ - sZFE
-      szt = szt / 2_wp / sRho_G
+      szt = sZ - tVars%sZFE
+      szt = szt / 2_wp / tVars%rho
 
 !$OMP WORKSHARE
-      bxj = kx_und_G / ky_und_G * sinh(kx_und_G * sx) &
-            * sinh(ky_und_G * sy) &
+      bxj = tVars%kxu / tVars%kyu * sinh(tVars%kxu * sx) &
+            * sinh(tVars%kyu * sy) &
             * (-szt / 4_wp / pi + 1_wp) * sin(szt)
 !$OMP END WORKSHARE
 
     else if (iUndPlace_G == iUndMain_G) then
 
 !$OMP WORKSHARE
-      bxj = kx_und_G / ky_und_G * sinh(kx_und_G * sx) &
-            * sinh(ky_und_G * sy) &
+      bxj = tVars%kxu / tVars%kyu * sinh(tVars%kxu * sx) &
+            * sinh(tVars%kyu * sy) &
             * sin(szt)
 !$OMP END WORKSHARE
 
@@ -124,7 +202,7 @@ subroutine getBXfield(sx, sy, sz, bxj)
 !    Plane-pole case - planar wiggler with focusing
 !    only in y (and electron will wiggle in x)
 
-  else if (zUndType_G == 'planepole')  then
+  else if (tVars%zUndType == 'planepole')  then
 
     if (iUndPlace_G == iUndStart_G) then
 
@@ -134,8 +212,8 @@ subroutine getBXfield(sx, sy, sz, bxj)
 
     else if (iUndPlace_G == iUndEnd_G) then
 
-      szt = sZ - sZFE
-      szt = szt / 2_wp / sRho_G
+      szt = sZ - tVars%sZFE
+      szt = szt / 2_wp / tVars%rho
 
 !$OMP WORKSHARE
       bxj = 0_wp
@@ -162,7 +240,7 @@ subroutine getBXfield(sx, sy, sz, bxj)
 !    Helical case - helical wiggler with focusing
 !    in x and y (and electron will wiggle in x and y)
 
-  else if (zUndType_G == 'helical')  then
+  else if (tVars%zUndType == 'helical')  then
 
     if (iUndPlace_G == iUndStart_G) then
 
@@ -171,14 +249,14 @@ subroutine getBXfield(sx, sy, sz, bxj)
 !               cos(szt / 8_wp) * sin(szt) / 4_wp   &
 !             +  sin(szt/8_wp)**2_wp  * cos(szt)
 !$OMP WORKSHARE
-      bxj = (sZ - pi * sRho_G) / (6_wp * pi*sRho_G) * cos(szt)
+      bxj = (sZ - pi * tVars%rho) / (6_wp * pi*tVars%rho) * cos(szt)
 !$OMP END WORKSHARE
 
-      if (sZ < pi * sRho_G) then 
+      if (sZ < pi * tVars%rho) then 
 !$OMP WORKSHARE
         bxj = 0.0_wp
 !$OMP END WORKSHARE
-      else if (sZ > 7_wp * pi * sRho_G) then
+else if (sZ > 7_wp * pi * tVars%rho) then
 !$OMP WORKSHARE
         bxj = cos(szt)
 !$OMP END WORKSHARE
@@ -186,8 +264,8 @@ subroutine getBXfield(sx, sy, sz, bxj)
 
     else if (iUndPlace_G == iUndEnd_G) then
 
-      szt = sZ - sZFE
-!      szt = szt / 2_wp / sRho_G
+      szt = sZ - tVars%sZFE
+!      szt = szt / 2_wp / tVars%rho
 
 
 !      bxj = - cos(szt / 8_wp) * &
@@ -195,15 +273,15 @@ subroutine getBXfield(sx, sy, sz, bxj)
 !            +  cos(szt/8_wp)**2_wp  * cos(szt)
 
 !$OMP WORKSHARE
-      bxj =  - (szt - 7.0_wp * pi * sRho_G) / (6_wp * pi * sRho_G) * &
-               cos(szt / 2_wp / sRho_G)
+      bxj =  - (szt - 7.0_wp * pi * tVars%rho) / (6_wp * pi * tVars%rho) * &
+               cos(szt / 2_wp / tVars%rho)
 !$OMP END WORKSHARE
 
-      if (sZt < pi * sRho_G) then 
+      if (sZt < pi * tVars%rho) then 
 !$OMP WORKSHARE
-        bxj = cos(szt / 2_wp / sRho_G)
+        bxj = cos(szt / 2_wp / tVars%rho)
 !$OMP END WORKSHARE
-      else if (sZt > 7_wp * pi * sRho_G) then
+else if (sZt > 7_wp * pi * tVars%rho) then
 !$OMP WORKSHARE
         bxj = 0.0_wp
 !$OMP END WORKSHARE
@@ -239,38 +317,38 @@ subroutine getBXfield(sx, sy, sz, bxj)
     if (iUndPlace_G == iUndStart_G) then
 
 
-!      bxj = fx_G * sin(szt / 8_wp) * &
+!      bxj = tVars%ux * sin(szt / 8_wp) * &
 !               cos(szt / 8_wp) * sin(szt) / 4_wp   &
 !             +  sin(szt/8_wp)**2_wp  * cos(szt)
 !$OMP WORKSHARE
-      bxj = fx_G * (sZ - pi * sRho_G) / (6_wp * pi*sRho_G) * cos(szt)
+      bxj = tVars%ux * (sZ - pi * tVars%rho) / (6_wp * pi*tVars%rho) * cos(szt)
 !$OMP END WORKSHARE
 
-      if (sZ < pi * sRho_G) then 
+      if (sZ < pi * tVars%rho) then 
 !$OMP WORKSHARE
         bxj = 0.0_wp
 !$OMP END WORKSHARE
-      else if (sZ > 7_wp * pi * sRho_G) then
+else if (sZ > 7_wp * pi * tVars%rho) then
 !$OMP WORKSHARE
-        bxj = fx_G * cos(szt)
+        bxj = tVars%ux * cos(szt)
 !$OMP END WORKSHARE
       end if
 
     else if (iUndPlace_G == iUndEnd_G) then
 
-      szt = sZ - sZFE
-      !szt = szt / 2_wp / sRho_G
+      szt = sZ - tVars%sZFE
+      !szt = szt / 2_wp / tVars%rho
 
 !$OMP WORKSHARE
-      bxj =  -fx_G * (szt - 7.0_wp * pi * sRho_G) / (6_wp * pi * sRho_G) * &
-               cos(szt / 2_wp / sRho_G)
+      bxj =  -tVars%ux * (szt - 7.0_wp * pi * tVars%rho) / (6_wp * pi * tVars%rho) * &
+               cos(szt / 2_wp / tVars%rho)
 !$OMP END WORKSHARE
 
-      if (sZt < pi * sRho_G) then 
+      if (sZt < pi * tVars%rho) then 
 !$OMP WORKSHARE
-        bxj = fx_G * cos(szt / 2_wp / sRho_G)
+        bxj = tVars%ux * cos(szt / 2_wp / tVars%rho)
 !$OMP END WORKSHARE
-      else if (sZt > 7_wp * pi * sRho_G) then
+else if (sZt > 7_wp * pi * tVars%rho) then
 !$OMP WORKSHARE
         bxj = 0.0_wp
 !$OMP END WORKSHARE
@@ -280,7 +358,7 @@ subroutine getBXfield(sx, sy, sz, bxj)
     else if (iUndPlace_G == iUndMain_G) then
 
 !$OMP WORKSHARE
-      bxj = fx_G*cos(szt)
+      bxj = tVars%ux*cos(szt)
 !$OMP END WORKSHARE
 
     end if
@@ -296,10 +374,10 @@ subroutine getBXfield(sx, sy, sz, bxj)
 
 !   Focusing component (non-physical)
 
-    if (qFocussing_G) then
+    if (tVars%qSF) then
 
 !$OMP WORKSHARE
-        bxj = sqrt(sEta_G) * sKBetaYSF_G**2.0_wp / sKappa_G &
+        bxj = sqrt(tVars%eta) * tVars%kbySF**2.0_wp / tVars%kappa &
               * sy + bxj
 !$OMP END WORKSHARE
 
@@ -310,10 +388,27 @@ subroutine getBXfield(sx, sy, sz, bxj)
 
 
 
-  subroutine getBYfield(sx, sy, sz, byj)
+
+!> @author
+!> Lawrence Campbell,
+!> University of Strathclyde,
+!> Glasgow, UK
+!> @brief
+!> Calculate the by-fields for given coordinates
+!> @param[in] sx Macroparticle coordinates in xbar
+!> @param[in] sy Macroparticle coordinates in ybar
+!> @param[in] sz current scaled distance though undulator, zbar
+!> @param[out] byj scaled b-field in y direction for macroparticles
+
+  subroutine getBYfield(sx, sy, sz, tVars, byj)
+
+  use typecalcParams, only: fcalcParams
+  use typesAndConstants, only: pi
+  implicit none
 
   real(kind=wp), contiguous, intent(in) :: sx(:), sy(:)
   real(kind=wp), intent(in) :: sz
+  type(fcalcParams), intent(in) :: tVars
   real(kind=wp), contiguous, intent(out) :: byj(:)
 
 !    Local vars:-
@@ -321,7 +416,7 @@ subroutine getBXfield(sx, sy, sz, bxj)
   real(kind=wp) :: szt
 
   szt = sZ
-  szt = szt / 2_wp / sRho_G
+  szt = szt / 2_wp / tVars%rho
 
 
 !  ####################################################
@@ -329,32 +424,32 @@ subroutine getBXfield(sx, sy, sz, bxj)
 !    in both x and y (electron wiggles in x)
 
 
-  if (zUndType_G == 'curved') then
+  if (tVars%zUndType == 'curved') then
 
     if (iUndPlace_G == iUndStart_G) then
 
 !$OMP WORKSHARE
-      byj = cosh(kx_und_G * sx) &
-            * cosh(ky_und_G * sy) &
+      byj = cosh(tVars%kxu * sx) &
+            * cosh(tVars%kyu * sy) &
             *  szt / 4_wp / pi * sin(szt)
 !$OMP END WORKSHARE
 
     else if (iUndPlace_G == iUndEnd_G) then
 
-      szt = sZ - sZFE
-      szt = szt / 2_wp / sRho_G
+      szt = sZ - tVars%sZFE
+      szt = szt / 2_wp / tVars%rho
 
 !$OMP WORKSHARE
-      byj = cosh(kx_und_G * sx) &
-            * cosh(ky_und_G * sy) &
+      byj = cosh(tVars%kxu * sx) &
+            * cosh(tVars%kyu * sy) &
             * (-szt / 4_wp / pi + 1_wp) * sin(szt)
 !$OMP END WORKSHARE
 
     else if (iUndPlace_G == iUndMain_G) then
 
 !$OMP WORKSHARE
-      byj = cosh(kx_und_G * sx) &
-            * cosh(ky_und_G * sy) &
+      byj = cosh(tVars%kxu * sx) &
+            * cosh(tVars%kyu * sy) &
             * sin(szt)
 !$OMP END WORKSHARE
 
@@ -375,12 +470,12 @@ subroutine getBXfield(sx, sy, sz, bxj)
 
 
 
-  else if (zUndType_G == 'planepole')  then
+  else if (tVars%zUndType == 'planepole')  then
 
     if (iUndPlace_G == iUndStart_G) then
 
 !$OMP WORKSHARE
-!      byj = cosh( sqrt(sEta_G) / 2_wp / sRho_G * sy) * &
+!      byj = cosh( sqrt(tVars%eta) / 2_wp / tVars%rho * sy) * &
 !            (  (- sin(szt / 8_wp) * &
 !               cos(szt / 8_wp) * cos(szt) / 4_wp   &
 !             +  sin(szt/8_wp)**2_wp  * sin(szt) )  )
@@ -394,11 +489,11 @@ subroutine getBXfield(sx, sy, sz, bxj)
 
     else if (iUndPlace_G == iUndEnd_G) then
 
-      szt = sZ - sZFE
-      szt = szt / 2_wp / sRho_G
+      szt = sZ - tVars%sZFE
+      szt = szt / 2_wp / tVars%rho
 
 !$OMP WORKSHARE
-!      byj = cosh( sqrt(sEta_G) / 2_wp / sRho_G * sy) * &
+!      byj = cosh( sqrt(tVars%eta) / 2_wp / tVars%rho * sy) * &
 !            (  cos(szt / 8_wp) * &
 !              sin(szt / 8_wp) * cos(szt)  / 4_wp  &
 !            +  cos(szt/8_wp)**2_wp  * sin(szt)  )
@@ -409,7 +504,7 @@ subroutine getBXfield(sx, sy, sz, bxj)
     else if (iUndPlace_G == iUndMain_G) then
 
 !$OMP WORKSHARE
-!      byj = cosh( sqrt(sEta_G) / 2_wp / sRho_G * sy) &
+!      byj = cosh( sqrt(tVars%eta) / 2_wp / tVars%rho * sy) &
 !            * sin(szt)
       byj = sin(szt)
 !$OMP END WORKSHARE
@@ -431,7 +526,7 @@ subroutine getBXfield(sx, sy, sz, bxj)
 !    Helical case - helical wiggler with focusing
 !    in x and y (and electron will wiggle in x and y)
 
-  else if (zUndType_G == 'helical')  then
+  else if (tVars%zUndType == 'helical')  then
 
     if (iUndPlace_G == iUndStart_G) then
 
@@ -441,8 +536,8 @@ subroutine getBXfield(sx, sy, sz, bxj)
 
     else if (iUndPlace_G == iUndEnd_G) then
 
-      szt = sZ - sZFE
-      szt = szt / 2_wp / sRho_G
+      szt = sZ - tVars%sZFE
+      szt = szt / 2_wp / tVars%rho
 
 !$OMP WORKSHARE
       byj = (-szt / 4_wp / pi + 1_wp) * sin(szt)
@@ -481,22 +576,22 @@ subroutine getBXfield(sx, sy, sz, bxj)
     if (iUndPlace_G == iUndStart_G) then
 
 !$OMP WORKSHARE
-      byj = fy_G * szt / 4_wp / pi * sin(szt)
+      byj = tVars%uy * szt / 4_wp / pi * sin(szt)
 !$OMP END WORKSHARE
 
     else if (iUndPlace_G == iUndEnd_G) then
 
-      szt = sZ - sZFE
-      szt = szt / 2_wp / sRho_G
+      szt = sZ - tVars%sZFE
+      szt = szt / 2_wp / tVars%rho
 
 !$OMP WORKSHARE
-      byj = fy_G * (-szt / 4_wp / pi + 1_wp) * sin(szt)
+      byj = tVars%uy * (-szt / 4_wp / pi + 1_wp) * sin(szt)
 !$OMP END WORKSHARE
 
     else if (iUndPlace_G == iUndMain_G) then
 
 !$OMP WORKSHARE
-      byj = fy_G * sin(szt)
+      byj = tVars%uy * sin(szt)
 !$OMP END WORKSHARE
 
     end if
@@ -511,10 +606,10 @@ subroutine getBXfield(sx, sy, sz, bxj)
 
 !   Focusing component (non-physical)
 
-    if (qFocussing_G) then
+    if (tVars%qSF) then
 
 !$OMP WORKSHARE
-      byj = -sqrt(sEta_G) * sKBetaXSF_G**2.0_wp / sKappa_G &
+      byj = -sqrt(tVars%eta) * tVars%kbxSF**2.0_wp / tVars%kappa &
             * sx + byj
 !$OMP END WORKSHARE
 
@@ -523,65 +618,68 @@ subroutine getBXfield(sx, sy, sz, bxj)
   end subroutine getBYfield
 
 
+!> @author
+!> Lawrence Campbell,
+!> University of Strathclyde,
+!> Glasgow, UK
+!> @brief
+!> Calculate the bz-fields for given coordinates
+!> @param[in] sx Macroparticle coordinates in xbar
+!> @param[in] sy Macroparticle coordinates in ybar
+!> @param[in] sz current scaled distance though undulator, zbar
+!> @param[out] bzj scaled b-field in z direction for macroparticles
 
-
-subroutine getBZfield(sx, sy, sz, bzj)
-
+subroutine getBZfield(sx, sy, sz, tVars, bzj)
+  use typecalcParams, only: fcalcParams
+  use typesAndConstants, only: pi
+  implicit none
   real(kind=wp), contiguous, intent(in) :: sx(:), sy(:)
   real(kind=wp), intent(in) :: sz
+  type(fcalcParams), intent(in) :: tVars
   real(kind=wp), contiguous, intent(out) :: bzj(:)
 
 !    Local vars:-
 
   real(kind=wp) :: szt
 
-
-
   szt = sZ
-  szt = szt / 2_wp / sRho_G
+  szt = szt / 2.0_wp / tVars%rho
 
-
-  if (qOneD_G) then
+  if (tVars%q1D) then
 
 !  ####################################################
 !    1D case - no z-component of magnetic field
 
 !$OMP WORKSHARE
-    bzj = 0_wp
+    bzj = 0.0_wp
 !$OMP END WORKSHARE
 
   else
-
-
-
-
-
-
 
 !  ####################################################
 !    Curved pole case - planar wiggler with focusing
 !    in both x and y (electron wiggles in x)
 
 
-  if (zUndType_G == 'curved') then
+  if (tVars%zUndType == 'curved') then
 
     if (iUndPlace_G == iUndStart_G) then
 
 !$OMP WORKSHARE
-      bzj = sqrt(sEta_G) / 2 / sRho_G / ky_und_G &
-                * cosh(kx_und_G * sx) &
-            * sinh(ky_und_G * sy) &
+      bzj = sqrt(tVars%eta) / 2 / tVars%rho / tVars%kyu &
+                * cosh(tVars%kxu * sx) &
+            * sinh(tVars%kyu * sy) &
             * (szt / 4_wp / pi) * cos(szt)
 !$OMP END WORKSHARE
 
     else if (iUndPlace_G == iUndEnd_G) then
 
-      szt = sZ - sZFE
-      szt = szt / 2_wp / sRho_G
+      szt = sZ - tVars%sZFE
+      szt = szt / 2_wp / tVars%rho
 
 !$OMP WORKSHARE
-      bzj = sqrt(sEta_G) / 2_wp / sRho_G / kx_und_G &
-            * cosh(kx_und_G * sx) * sinh(ky_und_G * sy) &
+      bzj = sqrt(tVars%eta) / 2_wp / tVars%rho / tVars%kxu &
+            * cosh(tVars%kxu * sx) * sinh(tVars%kyu * sy) &
             * (-szt / 4_wp / pi + 1_wp) * cos(szt)
 !$OMP END WORKSHARE
 
@@ -589,8 +687,8 @@ subroutine getBZfield(sx, sy, sz, bzj)
 
 
 !$OMP WORKSHARE
-      bzj = sqrt(sEta_G) / 2_wp / sRho_G / kx_und_G * &
-           cosh(kx_und_G * sx) * sinh(ky_und_G * sy) &
+      bzj = sqrt(tVars%eta) / 2_wp / tVars%rho / tVars%kxu * &
+           cosh(tVars%kxu * sx) * sinh(tVars%kyu * sy) &
             * cos(szt)
 !$OMP END WORKSHARE
 
@@ -608,29 +706,29 @@ subroutine getBZfield(sx, sy, sz, bzj)
 !    Plane-pole case - planar wiggler with focusing
 !    only in y (and electron will wiggle in x)
 
-  else if (zUndType_G == 'planepole')  then
+  else if (tVars%zUndType == 'planepole')  then
 
     if (iUndPlace_G == iUndStart_G) then
 
 !$OMP WORKSHARE
-      bzj = sinh( sqrt(sEta_G) / 2_wp / sRho_G * sy) * &
+      bzj = sinh( sqrt(tVars%eta) / 2_wp / tVars%rho * sy) * &
             (szt / 4_wp / pi) * cos(szt)
 !$OMP END WORKSHARE
 
     else if (iUndPlace_G == iUndEnd_G) then
 
-      szt = sZ - sZFE
-      szt = szt / 2_wp / sRho_G
+      szt = sZ - tVars%sZFE
+      szt = szt / 2_wp / tVars%rho
 
 !$OMP WORKSHARE
-      bzj = sinh( sqrt(sEta_G) / 2_wp / sRho_G * sy) * &
+      bzj = sinh( sqrt(tVars%eta) / 2_wp / tVars%rho * sy) * &
             (-szt / 4_wp / pi + 1_wp) * cos(szt) 
 !$OMP END WORKSHARE
 
     else if (iUndPlace_G == iUndMain_G) then
 
 !$OMP WORKSHARE
-      bzj = sinh( sqrt(sEta_G) / 2_wp / sRho_G * sy) &
+      bzj = sinh( sqrt(tVars%eta) / 2_wp / tVars%rho * sy) &
             * cos(szt)
 !$OMP END WORKSHARE
 
@@ -648,24 +746,24 @@ subroutine getBZfield(sx, sy, sz, bzj)
 !    Helical case - helical wiggler with focusing
 !    in x and y (and electron will wiggle in x and y)
 
-  else if (zUndType_G == 'helical')  then
+  else if (tVars%zUndType == 'helical')  then
 
     if (iUndPlace_G == iUndStart_G) then
 
 ! ...from x-comp:
 
 !$OMP WORKSHARE
-      bzj = - sqrt(sEta_G) / 2 / sRho_G * (sZ - pi * sRho_G) / (6_wp * pi*sRho_G) &
+      bzj = - sqrt(tVars%eta) / 2 / tVars%rho * (sZ - pi * tVars%rho) / (6_wp * pi*tVars%rho) &
             * sx * sin(szt)            
 !$OMP END WORKSHARE
 
-      if (sZ < pi * sRho_G) then 
+      if (sZ < pi * tVars%rho) then 
 !$OMP WORKSHARE
         bzj = 0.0_wp
 !$OMP END WORKSHARE
-      else if (sZ > 7_wp * pi * sRho_G) then
+else if (sZ > 7_wp * pi * tVars%rho) then
 !$OMP WORKSHARE
-        bzj = - sqrt(sEta_G) / 2 / sRho_G * sx * sin(szt)
+        bzj = - sqrt(tVars%eta) / 2 / tVars%rho * sx * sin(szt)
 !$OMP END WORKSHARE
       end if
       
@@ -673,11 +771,11 @@ subroutine getBZfield(sx, sy, sz, bzj)
 ! ...and from y-comp:
 
 !$OMP WORKSHARE
-      bzj = bzj + szt / 4_wp / pi * sqrt(sEta_G) / 2 / sRho_G * sy * cos(szt)
+      bzj = bzj + szt / 4_wp / pi * sqrt(tVars%eta) / 2 / tVars%rho * sy * cos(szt)
 !$OMP END WORKSHARE
 
 !  !$OMP WORKSHARE
-!        bzj = sqrt(sEta_G) / 2 / sRho_G * (     &
+!        bzj = sqrt(tVars%eta) / 2 / tVars%rho * (     &
 !              sx *  sin(szt) )    + &
 !              sy * ( -1/32_wp * cos(szt/4_wp) * cos(szt) + &
 !                      1/4_wp * sin(szt/4_wp) * sin(szt) + &
@@ -686,21 +784,21 @@ subroutine getBZfield(sx, sy, sz, bzj)
 
     else if (iUndPlace_G == iUndEnd_G) then
 
-      szt = sZ - sZFE
-      !szt = szt / 2_wp / sRho_G
+      szt = sZ - tVars%sZFE
+      !szt = szt / 2_wp / tVars%rho
 
 ! ...from x-comp:
 
 !$OMP WORKSHARE
-      bzj = - sqrt(sEta_G) / 2 / sRho_G * (szt - 7.0_wp * pi * sRho_G) / &
-              (6_wp * pi * sRho_G) * sx * sin(szt / 2_wp / sRho_G)            
+      bzj = - sqrt(tVars%eta) / 2 / tVars%rho * (szt - 7.0_wp * pi * tVars%rho) / &
+              (6_wp * pi * tVars%rho) * sx * sin(szt / 2_wp / tVars%rho)            
 !$OMP END WORKSHARE
 
-      if (szt < pi * sRho_G) then 
+      if (szt < pi * tVars%rho) then 
 !$OMP WORKSHARE
-        bzj = - sqrt(sEta_G) / 2 / sRho_G * sx * sin(szt / 2_wp / sRho_G)
+        bzj = - sqrt(tVars%eta) / 2 / tVars%rho * sx * sin(szt / 2_wp / tVars%rho)
 !$OMP END WORKSHARE
-      else if (szt > 7_wp * pi * sRho_G) then
+else if (szt > 7_wp * pi * tVars%rho) then
 !$OMP WORKSHARE
         bzj = 0.0_wp
 !$OMP END WORKSHARE
@@ -710,8 +808,8 @@ subroutine getBZfield(sx, sy, sz, bzj)
 ! ...and from y-comp:
 
 !$OMP WORKSHARE
-      bzj = bzj + (-szt / 8_wp / pi / sRho_G + 1_wp) * &
-            sqrt(sEta_G) / 2 / sRho_G * sy * cos(szt / 2_wp / sRho_G)
+      bzj = bzj + (-szt / 8_wp / pi / tVars%rho + 1_wp) * &
+            sqrt(tVars%eta) / 2 / tVars%rho * sy * cos(szt / 2_wp / tVars%rho)
 !$OMP END WORKSHARE
 
 
@@ -726,7 +824,7 @@ subroutine getBZfield(sx, sy, sz, bzj)
 
 
 ! !$OMP WORKSHARE
-!       bzj = sqrt(sEta_G) / 2 / sRho_G * (     &
+!       bzj = sqrt(tVars%eta) / 2 / tVars%rho * (     &
 !             sx * ( -1/32_wp * cos(szt/4_wp) * sin(szt) - &
 !                     1/4_wp * sin(szt/4_wp) * cos(szt) - &
 !                     cos(szt/8_wp)**2 * sin(szt) )    + &
@@ -738,7 +836,7 @@ subroutine getBZfield(sx, sy, sz, bzj)
     else if (iUndPlace_G == iUndMain_G) then
 
 !$OMP WORKSHARE
-      bzj = sqrt(sEta_G) / 2 / sRho_G * &
+      bzj = sqrt(tVars%eta) / 2 / tVars%rho * &
             ( -sx * sin(szt)  + sy * cos(szt) )
 !$OMP END WORKSHARE
 
@@ -765,17 +863,17 @@ subroutine getBZfield(sx, sy, sz, bzj)
 ! ...from x-comp:
 
 !$OMP WORKSHARE
-      bzj = - sqrt(sEta_G) / 2 / sRho_G * (sZ - pi * sRho_G) / (6_wp * pi*sRho_G) &
-            * fx_G * sx * sin(szt)            
+      bzj = - sqrt(tVars%eta) / 2 / tVars%rho * (sZ - pi * tVars%rho) / (6_wp * pi*tVars%rho) &
+            * tVars%ux * sx * sin(szt)            
 !$OMP END WORKSHARE
 
-      if (sZ < pi * sRho_G) then 
+      if (sZ < pi * tVars%rho) then 
 !$OMP WORKSHARE
         bzj = 0.0_wp
 !$OMP END WORKSHARE
-      else if (sZ > 7_wp * pi * sRho_G) then
+else if (sZ > 7_wp * pi * tVars%rho) then
 !$OMP WORKSHARE
-        bzj = - sqrt(sEta_G) / 2 / sRho_G * fx_G * sx * sin(szt)
+        bzj = - sqrt(tVars%eta) / 2 / tVars%rho * tVars%ux * sx * sin(szt)
 !$OMP END WORKSHARE
       end if
       
@@ -783,7 +881,7 @@ subroutine getBZfield(sx, sy, sz, bzj)
 ! ...and from y-comp:
 
 !$OMP WORKSHARE
-      bzj = bzj + szt / 4_wp / pi * sqrt(sEta_G) / 2 / sRho_G * fy_G * sy * cos(szt)
+      bzj = bzj + szt / 4_wp / pi * sqrt(tVars%eta) / 2 / tVars%rho * tVars%uy * sy * cos(szt)
 !$OMP END WORKSHARE
 
 
@@ -791,19 +889,19 @@ subroutine getBZfield(sx, sy, sz, bzj)
 
 
 !!$OMP WORKSHARE
-!      bzj = sqrt(sEta_G) / 2 / sRho_G * (     &
-!        fx_G*sx * ( 1/32_wp * cos(szt/4_wp) * sin(szt) + &
+!      bzj = sqrt(tVars%eta) / 2 / tVars%rho * (     &
+!        tVars%ux*sx * ( 1/32_wp * cos(szt/4_wp) * sin(szt) + &
 !                    1/4_wp * sin(szt/4_wp) * cos(szt) - &
 !                    sin(szt/8_wp)**2 * sin(szt) )    + &
-!        fy_G*sy * ( -1/32_wp * cos(szt/4_wp) * cos(szt) + &
+!        tVars%uy*sy * ( -1/32_wp * cos(szt/4_wp) * cos(szt) + &
 !                    1/4_wp * sin(szt/4_wp) * sin(szt) + &
 !                    sin(szt/8_wp)**2 * cos(szt) ) )
 !!$OMP END WORKSHARE
 
     else if (iUndPlace_G == iUndEnd_G) then
 
-      szt = sZ - sZFE
-!      szt = szt / 2_wp / sRho_G
+      szt = sZ - tVars%sZFE
+!      szt = szt / 2_wp / tVars%rho
 
 
 
@@ -815,15 +913,15 @@ subroutine getBZfield(sx, sy, sz, bzj)
 ! ...from x-comp:
 
 !$OMP WORKSHARE
-      bzj = - sqrt(sEta_G) / 2 / sRho_G * (szt - 7.0_wp * pi * sRho_G) / &
-              (6_wp * pi * sRho_G) * fx_G * sx * sin(szt / 2_wp / sRho_G)            
+      bzj = - sqrt(tVars%eta) / 2 / tVars%rho * (szt - 7.0_wp * pi * tVars%rho) / &
+              (6_wp * pi * tVars%rho) * tVars%ux * sx * sin(szt / 2_wp / tVars%rho)            
 !$OMP END WORKSHARE
 
-      if (szt < pi * sRho_G) then 
+      if (szt < pi * tVars%rho) then 
 !$OMP WORKSHARE
-        bzj = - sqrt(sEta_G) / 2 / sRho_G * fx_G * sx * sin(szt / 2_wp / sRho_G)
+        bzj = - sqrt(tVars%eta) / 2 / tVars%rho * tVars%ux * sx * sin(szt / 2_wp / tVars%rho)
 !$OMP END WORKSHARE
-      else if (szt > 7_wp * pi * sRho_G) then
+else if (szt > 7_wp * pi * tVars%rho) then
 !$OMP WORKSHARE
         bzj = 0.0_wp
 !$OMP END WORKSHARE
@@ -833,8 +931,8 @@ subroutine getBZfield(sx, sy, sz, bzj)
 ! ...and from y-comp:
 
 !$OMP WORKSHARE
-      bzj = bzj + (-szt / 8_wp / pi / sRho_G + 1_wp) * &
-            sqrt(sEta_G) / 2 / sRho_G * fy_G * sy * cos(szt / 2_wp / sRho_G)
+      bzj = bzj + (-szt / 8_wp / pi / tVars%rho + 1_wp) * &
+            sqrt(tVars%eta) / 2 / tVars%rho * tVars%uy * sy * cos(szt / 2_wp / tVars%rho)
 !$OMP END WORKSHARE
 
 
@@ -850,11 +948,11 @@ subroutine getBZfield(sx, sy, sz, bzj)
 
 
 !!$OMP WORKSHARE
-!      bzj = sqrt(sEta_G) / 2 / sRho_G * (     &
-!        fx_G*sx * ( -1/32_wp * cos(szt/4_wp) * sin(szt) - &
+!      bzj = sqrt(tVars%eta) / 2 / tVars%rho * (     &
+!        tVars%ux*sx * ( -1/32_wp * cos(szt/4_wp) * sin(szt) - &
 !                    1/4_wp * sin(szt/4_wp) * cos(szt) - &
 !                    cos(szt/8_wp)**2 * sin(szt) )    + &
-!        fy_G*sy * ( 1/32_wp * cos(szt/4_wp) * cos(szt) - &
+!        tVars%uy*sy * ( 1/32_wp * cos(szt/4_wp) * cos(szt) - &
 !                    1/4_wp * sin(szt/4_wp) * sin(szt) + &
 !                    cos(szt/8_wp)**2 * cos(szt) ) )
 !!$OMP END WORKSHARE
@@ -862,8 +960,8 @@ subroutine getBZfield(sx, sy, sz, bzj)
     else if (iUndPlace_G == iUndMain_G) then
 
 !$OMP WORKSHARE
-      bzj = sqrt(sEta_G) / 2 / sRho_G * &
-            ( -fx_G*sx * sin(szt)  + fy_G*sy * cos(szt) )
+      bzj = sqrt(tVars%eta) / 2 / tVars%rho * &
+            ( -tVars%ux*sx * sin(szt)  + tVars%uy*sy * cos(szt) )
 !$OMP END WORKSHARE
 
     end if

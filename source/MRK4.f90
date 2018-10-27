@@ -177,7 +177,7 @@ subroutine rk4par(sZ,h,qD)
   call derivs(sZ, A_localtr0, A_localti0, &
               sElX_G, sElY_G, sElZ2_G, sElPX_G, sElPY_G, sElGam_G, &
               dxdx, dydx, dz2dx, dpxdx, dpydx, dpz2dx, &
-              dadz_r0, dadz_i0)
+              dadz_r0, dadz_i0, tScale_G, tProcInfo_G)
 
 !call mpi_finalize(error)
 !stop
@@ -217,7 +217,7 @@ subroutine rk4par(sZ,h,qD)
     call derivs(szh, A_localtr1, A_localti1, &
        xt, yt, z2t, pxt, pyt, pz2t, &
        dxt, dyt, dz2t, dpxt, dpyt, dpz2t, &
-       dadz_r1, dadz_i1)
+       dadz_r1, dadz_i1, tScale_G, tProcInfo_G)
 
 
 
@@ -253,7 +253,7 @@ subroutine rk4par(sZ,h,qD)
     call derivs(szh, A_localtr2, A_localti2, &
        xt, yt, z2t, pxt, pyt, pz2t, &
        dxm, dym, dz2m, dpxm, dpym, dpz2m, &
-       dadz_r2, dadz_i2)
+       dadz_r2, dadz_i2, tScale_G, tProcInfo_G)
 
 !    Incrementing
 
@@ -300,7 +300,7 @@ subroutine rk4par(sZ,h,qD)
       call derivs(szh, A_localtr3, A_localti3, &
        xt, yt, z2t, pxt, pyt, pz2t, &
        dxt, dyt, dz2t, dpxt, dpyt, dpz2t, &
-       dadz_r1, dadz_i1)  
+       dadz_r1, dadz_i1, tScale_G, tProcInfo_G)
 
 
 !    Accumulate increments with proper weights       

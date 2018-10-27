@@ -12,18 +12,10 @@
 
 module Derivative
 
-! Module to calculate derivative required to integrate
-! using rk4
-
-use rhs
-use ParaField
-
+use paratype, only: wp, ip
 implicit none
 
 contains
-
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
 
 !> Subroutine which calculate d/dz of the local electron and field 
 !> variables, and then sums the global regions together.
@@ -32,19 +24,20 @@ contains
 !> @param sAi imaginary field 
 !> @param sx electron macroparticles' x position
 
-
   subroutine derivs(sz, sAr, sAi, sx, sy, sz2, spr, spi, sp2, &
-                    sdx, sdy, sdz2, sdpr, sdpi, sdp2, sdAr, sdAi)
-
-  implicit none
-
-! External subroutine returning dydz at z for use with RK4
-!
-!                 ARGUMENTS
-!
-! sz      INPUT     value of z to evaluate derivative at
-! sy      INPUT     Value of y at this z
-! sdydz   OUTPUT    Derivative of z and y
+                    sdx, sdy, sdz2, sdpr, sdpi, sdp2, sdAr, sdAi, &
+                    tScale, tMPI)
+    use typeCalcParams, only: fcalcParams
+    use typeScale, only: fScale
+    use rhs, only: getrhs
+    use parafield, only: upd8da, fz2, bz2
+    use globals !, only: fieldMesh, nz2_g, fx_G, fy_G, kx_und_G, ky_und_G, n2col, &
+                !       sZFS, sZFE, iOutInfo_G, sLengthOfElmX_G, sLengthOfElmY_G, &
+                !       sLengthOfElmZ2_G, sKBetaXSF_G, sKBetaYSF_G, &
+                !       qFocussing_G, qParrOK_G, qInnerXYOK_G
+    use ParallelInfoType, only: cParallelInfoType
+    use TransformInfoType
+    implicit none
 
     real(kind=wp), intent(in)  :: sz
     real(kind=wp), contiguous, intent(in)  :: sAr(:), sAi(:)
@@ -55,103 +48,84 @@ contains
                                   sdpr(:), sdpi(:), sdp2(:)
 
     real(kind=wp), contiguous, intent(inout) :: sdAr(:), sdAi(:)
+    type(fScale), intent(in) :: tScale
+    type(cParallelInfoType), intent(in) :: tMPI
 
-!                 LOCAL ARGS
-!
-! qOKL      Local error flag
-! sb        Vector holding the right hand sides
-
-!    real(kind=wp), allocatable :: ldadz(:)
-    integer(kind=ip) :: error, iArEr
+    type(fcalcParams) :: tVars
+    integer(kind=ip) :: error, iArEr, maxEl
     logical :: qOKL
 
-!    allocate(LDADz(ReducedNX_G*ReducedNY_G*NZ2_G*2))
-!    ldadz = 0.0_WP   ! Local dadz (MPI)
+    maxEl = maxval(procelectrons_G)
 
-
-
+    call tVars%init(sLengthOfElmX_G, sLengthOfElmY_G, sLengthOfElmZ2_G, &
+                    nspinDX, nspinDY, nz2_g, fz2, bz2, fieldMesh, &
+                    fx_G, fy_G, kx_und_G, ky_und_G, n2col, sZFS, sZFE, &
+                    sKBetaXSF_G, sKBetaYSF_G, zUndType_G, procelectrons_G(1), maxEl, &
+                    tTransInfo_G%qOneD, qFocussing_G, qParrOK_G, qInnerXYOK_G, &
+                    qElectronFieldCoupling_G, qElectronsEvolve_G, qFieldEvolve_G, &
+                    iOutInfo_G, tScale)
 
 !     Get RHS of field eqn and d/dz of electron variables
 
-    CALL getrhs(sz, &
+    call getrhs(sz, &
                 sAr, sAi, &
                 sx, sy, sz2, &
                 spr, spi, sp2, &
                 sdx, sdy, sdz2, &
                 sdpr, sdpi, sdp2, &
                 sdAr, sdAi, &
-                qOKL)
-
-
-
+                tVars, tScale)
 
 !    update fields in buffers
 
-      call upd8da(sdAr, sdAi)
-
-
+    call upd8da(sdAr, sdAi)
 
 !     Check to see if parallel field setup OK...
 
-      if (.not. qPArrOK_G) then
-        iArEr = 1_ip
-      else
-        iArEr = 0_ip
+    if (.not. tVars%qPArrOK) then
+      iArEr = 1_ip
+    else
+      iArEr = 0_ip
+    end if
+
+    call mpi_allreduce(mpi_in_place, iArEr, 1, &
+          MPI_INTEGER, &
+          MPI_SUM, MPI_COMM_WORLD, error)
+
+    if (iArEr > 0_ip) then
+      tVars%qPArrOK = .false.
+      if ((tMPI%qRoot) .and. (tVars%ioutInfo > 2)) then
+        print*, 'electron outside parallel bounds!'
+        print*, 'Emergency redistribute!!!'
+        print*, 'If this happens often, then &
+              & it is possible the parallel &
+              & tuning parameters are inefficient, &
+              & and not suitable...'
       end if
+    end if
 
-      call mpi_allreduce(mpi_in_place, iArEr, 1, &
-            MPI_INTEGER, &
-            MPI_SUM, MPI_COMM_WORLD, error)
+    if (.not. tVars%qInnerXYOK) then
+      iArEr = 1_ip
+    else
+      iArEr = 0_ip
+    end if
 
-      if (iArEr > 0_ip) then
-        qPArrOK_G = .false.
-        if ((tProcInfo_G%qRoot) .and. (ioutInfo_G > 2)) then
-          print*, 'electron outside parallel bounds!'
-          print*, 'Emergency redistribute!!!'
-          print*, 'If this happens often, then &
-                & it is possible the parallel &
-                & tuning parameters are inefficient, &
-                & and not suitable...'
-        end if
+    call mpi_allreduce(mpi_in_place, iArEr, 1, &
+          MPI_INTEGER, &
+          MPI_SUM, MPI_COMM_WORLD, error)
+
+    if (iArEr > 0_ip) then
+      tVars%qInnerXYOK = .false.
+      if ((tMPI%qRoot) .and. (tVars%ioutInfo > 2) ) then
+        print*, 'electron outside transverse bounds!'
+        print*, 'Emergency redistribute!!!'
       end if
+    end if
 
+    qPArrOK_G = tVars%qParrOK
+    qInnerXYOK_G = tVars%qInnerXYOK
+    call tVars%destroy()
 
+  end subroutine derivs
 
-      if (.not. qInnerXYOK_G) then
-        iArEr = 1_ip
-      else
-        iArEr = 0_ip
-      end if
-
-      call mpi_allreduce(mpi_in_place, iArEr, 1, &
-            MPI_INTEGER, &
-            MPI_SUM, MPI_COMM_WORLD, error)
-
-      if (iArEr > 0_ip) then
-        qInnerXYOK_G = .false.
-        if ((tProcInfo_G%qRoot) .and. (ioutInfo_G > 2) ) then
-          print*, 'electron outside transverse bounds!'
-          print*, 'Emergency redistribute!!!'
-        end if
-      end if
-
-
-!    scatter dadz to local MPI process (split amongst processors)
-
-!    CALL scatter2Loc(sda, ldadz, local_rows, &
-!         ReducedNX_G*ReducedNY_G*NZ2_G, mrecvs, mdispls, 0)
-
-
-!    DEALLOCATE(LDADz)
-
-    GOTO 2000
-
-!     Error Handler
-
-1000 CALL Error_log('Error in Derivative:derivs',tErrorLog_G)
-    PRINT*,'Error in Derivative:derivs'
-2000 CONTINUE
-
-  END SUBROUTINE derivs
-
-END MODULE Derivative
+end module Derivative
