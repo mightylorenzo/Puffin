@@ -42,8 +42,8 @@
 %%%% COMMON PARAMETERS:
 %%%% (these describe the 'reference' undulator and beam)
 
-rho = 0.005;
-aw = 1.0121809;
+rho = 0.001;
+aw = 1.414216;
 
 gammaFr = 1.0;   % Fractional gammaFr = gamma / gamma_r
 
@@ -92,7 +92,12 @@ ppsq = abs(pperp).^2;
 
 p2 = (1./gammaFr).^2 ./ (1 + aw_rms.^2) .* (1 + (aw.^2 .* ppsq));
 
-z2b = trapz(zbar, p2);   %  actual shift in z2 from end
+
+figure;
+plot(zbar, p2);
+
+
+z2b = trapz(zbar, p2)   %  actual shift in z2 from end
 
 z2nw = z2b ./ lw;         %  ...and as a fraction of resonant wavelength
 
@@ -162,12 +167,12 @@ z2modaf = z2modnw * 4 * pi * rho; % ...and in units of z2
 
 %%% ...and drift
 
-aw_rms = 0;
+%aw_rms = 0;
 %alpha = 1; %not needed
 npts = 1000;
 
 lw = 4 * pi * rho;
-lw2 = 16.4545455 * lw;  % length of front - SET TO DR * lw
+lw2 = 16.45 * lw;  % length of front - SET TO DR * lw
 
 
 zbar = linspace(0,lw2,npts);
@@ -180,7 +185,7 @@ pperp = zeros(1,length(zbar));%- alpha .* cos(zbar./16./rho).^2 .* cos(zbar./2./
 ppsq = abs(pperp).^2;
 
 
-p2 = (1./gammaFr).^2 ./ (1 + aw_rms.^2) .* (1 + (aw.^2 .* ppsq));
+p2 = (1./gammaFr).^2 ./ (1 + aw_rms.^2) .* (1 + (aw.^2 .* ppsq))
 
 z2d = trapz(zbar, p2);   %  actual shift in z2 from end
 
