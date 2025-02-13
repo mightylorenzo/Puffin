@@ -4,15 +4,15 @@
 # 25.6.2015 Jonathan Smith - CMake lists for PUFFIN Project
 ###
 
-cmake_minimum_required (VERSION 2.8.10)
+cmake_minimum_required (VERSION 3.16.3)
 project (puffin)
 cmake_policy(SET CMP0054 NEW)
 enable_language (Fortran)
 
 # The version number.
-set (Puffin_VERSION_MAJOR 1)
-set (Puffin_VERSION_MINOR 9)
-set (Puffin_VERSION_PATCH 0)
+set (Puffin_VERSION_MAJOR 2)
+set (Puffin_VERSION_MINOR 1)
+set (Puffin_VERSION_PATCH 0a)
 include(${CMAKE_SOURCE_DIR}/scimake/SciInit.cmake)
 
 #option(ENABLE_PARALLEL "whether to build parallel PUFFIN" ON)
@@ -49,6 +49,12 @@ if (OPENMP_FOUND)
     set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
     set (CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${OpenMP_Fortran_FLAGS}")
 endif()
+
+if (HDF5_FOUND)
+    if (LINUX)
+        set(Hdf5_LIBRARIES ${Hdf5_LIBRARIES} dl)
+    endif ()
+endif ()    
 
 ## FFLAGS depend on the compiler
 #get_filename_component (Fortran_COMPILER_NAME ${CMAKE_Fortran_COMPILER} NAME)#
@@ -125,10 +131,10 @@ enable_testing()
 
 configure_file(config-cmake.h.in config.h)
 
-configure_file(source/puffProvenance.f90.in source/puffProvenance.f90)
-configure_file(doc/fortran.dxg.in doc/fortran.dxg)
+configure_file(puffin/lib/common/puffProvenance.f90.in puffin/lib/common/puffProvenance.f90)
+# configure_file(doc/fortran.dxg.in doc/fortran.dxg)
 
-add_subdirectory(source)
+add_subdirectory(puffin)
 
 set(PFUNIT_INSTALL $ENV{PFUNIT_INSTALL})
 if (ENABLE_TESTING)
@@ -185,4 +191,4 @@ set (CPACK_RESOURCE_FILE_LICENSE
 set (CPACK_PACKAGE_VERSION_MAJOR "${Puffin_VERSION_MAJOR}")
 set (CPACK_PACKAGE_VERSION_MINOR "${Puffin_VERSION_MINOR}")
 set (CPACK_PACKAGE_VERSION_PATCH "${Puffin_VERSION_PATCH}")
-include (CPack)
+#include (CPack)
