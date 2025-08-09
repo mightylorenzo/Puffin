@@ -35,7 +35,7 @@ else()
 find_package(SciFftw3 REQUIRED)
 endif()
 
-find_package(SciHdf5)
+find_package(SciHdf5 REQUIRED)
 find_package(OpenMP)
 find_package(SciDoxygen)
 

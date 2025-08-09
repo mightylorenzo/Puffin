@@ -271,3 +271,11 @@ If you want, you can build the Docker image locally yourself from source, rather
 ```
 docker build -t imagename /path/to/puffin/
 ```
+
+### New build instructions
+
+Cmake command on mac OS with brew install:
+
+```sh
+/usr/local/bin/cmake -DCMAKE_EXPORT_COMPILE_COMMANDS:BOOL=TRUE -DCMAKE_BUILD_TYPE:STRING=Release -DCMAKE_COLOR_MAKEFILE:BOOL=TRUE -DCMAKE_VERBOSE_MAKEFILE:BOOL=TRUE -DDEBUG_CMAKE:BOOL=TRUE  -DENABLE_PARALLEL:BOOL=TRUE -DCMAKE_INSTALL_PREFIX:STRING=/Users/mightylorenzo/gitroot/github.mightylorenzo.puffin/puffin/install -DCMAKE_C_COMPILER:FILEPATH=/usr/local/bin/gcc-15 -DCMAKE_CXX_COMPILER:FILEPATH=/usr/local/bin/g++-15 -H/Users/mightylorenzo/gitroot/github.mightylorenzo.puffin/puffin/src -B/Users/mightylorenzo/gitroot/github.mightylorenzo.puffin/puffin/build -DHdf5_ROOT_DIR='/usr/local/opt/hdf5-parallel' -DHdf5_MODULE_DIRS='/usr/local/opt/hdf5-parallel/include/shared' -DHdf5_INCLUDE_DIRS='/usr/local/opt/hdf5-parallel/include/shared'  -DHdf5_LIBRARY_DIRS='/usr/local/opt/hdf5-parallel/lib' -DHdf5_INCLUDE_DIRS='/usr/local/opt/hdf5-parallel/include/' -G "Unix Makefiles"
+```

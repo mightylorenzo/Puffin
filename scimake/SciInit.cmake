@@ -99,7 +99,6 @@ endif ()
 #
 ######################################################################
 
-cmake_policy(SET CMP0017 OLD) # Use our modules over theirs
 set(CMAKE_MODULE_PATH
   ${SCIMAKE_DIR}/Modules
 )
