@@ -33,8 +33,11 @@ jobs:
     - name: Install dependencies via conda-forge
       shell: bash -l {0}
       run: |
-        conda install -y -c conda-forge compilers openmpi "hdf5=*=mpi_openmpi*" "fftw=*=mpi_openmpi*" cmake doxygen git
-    
+        if [ "$RUNNER_OS" == "Linux" ]; then
+          sudo apt install zlib1g-dev
+        fi
+
+
     - name: Build PFUnit
       shell: bash -l {0}
       run: |
