@@ -10,3 +10,4 @@ dependencies:
   - doxygen
   - git
   - python=3.11
+  - zlib
