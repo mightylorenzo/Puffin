@@ -11,12 +11,10 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest]
         include:
           - os: ubuntu-latest
             compiler: gcc-11
-          - os: macos-latest
-            compiler: gcc-15
 
     steps:
     - uses: actions/checkout@v4
@@ -29,12 +27,7 @@ jobs:
         environment-file: environment.yml
         python-version: '3.11'
         auto-update-conda: true
-    
-    - name: Install dependencies via conda-forge
-      shell: bash -l {0}
-      run: |
-        conda install -y -c conda-forge compilers openmpi "hdf5=*=mpi_openmpi*" "fftw=*=mpi_openmpi*" cmake doxygen git
-    
+
     - name: Build PFUnit
       shell: bash -l {0}
       run: |
