@@ -6,6 +6,13 @@ enable_language (Fortran)
 set (CMAKE_VERBOSE_MAKEFILE "On")
 
 find_package(PFUNIT REQUIRED)
+# pFUnit's config runs find_dependency(OpenMP), which recreates
+# OpenMP::OpenMP_Fortran in this directory scope pointing at libgomp.
+# Re-apply the libomp override so the test binaries do not end up linked
+# against two OpenMP runtimes. No-op unless USE_LLVM_OPENMP is ON.
+if (COMMAND puffin_force_llvm_openmp)
+  puffin_force_llvm_openmp()
+endif()
 enable_testing()
 
 include_directories(

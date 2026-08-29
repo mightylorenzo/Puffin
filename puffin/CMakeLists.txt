@@ -97,6 +97,14 @@ else()
   target_link_libraries(puffin puffin_mpi)
 endif()
 
+# With USE_LLVM_OPENMP, -fopenmp is a compile-only option (see the top-level
+# CMakeLists), so nothing has put an OpenMP runtime on the link line yet.
+# Attach libomp to puffin_mpi; the plain target_link_libraries signature used
+# above propagates it to puffin and to the test executables.
+if (USE_LLVM_OPENMP)
+  target_link_libraries(puffin_mpi ${LIBOMP_LIBRARY})
+endif()
+
 #target_link_libraries(puffin puffin_mpi)
 install (TARGETS puffin DESTINATION bin)
 install (TARGETS puffin_mpi DESTINATION lib)

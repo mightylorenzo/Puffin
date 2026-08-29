@@ -21,6 +21,7 @@ option(USE_MKL "Use Intel MKL" OFF)
 option(ENABLE_TESTING "Enable testing" OFF)
 option(ENABLE_BENCHMARKS "Enable performance benchmarks (see benchmark/README.md)" OFF)
 option(ENABLE_LINT "Enable extra compiler warnings (-Wall -Wextra)" OFF)
+option(USE_LLVM_OPENMP "macOS + gfortran only: link LLVM's libomp instead of GCC's libgomp. Opt-in; see the USE_LLVM_OPENMP block below before enabling" OFF)
 
 ######################################################################
 #
@@ -53,10 +54,109 @@ if (DOXYGEN_FOUND)
     message(STATUS "DOXYGEN IS : ${DOXYGEN_EXECUTABLE}")
 endif()
 
-if (OpenMP_FOUND)
+######################################################################
+#
+# OpenMP runtime selection
+#
+# Default (USE_LLVM_OPENMP=OFF): whatever the compiler's own -fopenmp pulls
+# in -- libgomp for GCC. This is the portable path and the one CI uses.
+#
+# USE_LLVM_OPENMP=ON links LLVM's libomp instead. This exists because
+# Homebrew's libgomp on macOS has no futex: it puts idle threads to sleep
+# between barriers and pays a kernel wake-up on every one, and it ignores
+# both GOMP_SPINCOUNT and OMP_WAIT_POLICY, so there is no way to make it
+# spin. Measured barrier cost on an M-series Mac, 200k barriers:
+#
+#   runtime                            2 threads    4 threads
+#   GCC libgomp                           5613 ns     14407 ns
+#   LLVM libomp (default blocktime)       3883 ns      8336 ns
+#   LLVM libomp + KMP_BLOCKTIME=infinite   197 ns       283 ns
+#
+# gfortran-compiled objects link against libomp unchanged, because libomp
+# implements the GOMP_* ABI -- no recompilation, only a different runtime.
+#
+# IMPORTANT: libomp is only worth linking if you also set
+#
+#   export KMP_BLOCKTIME=infinite
+#
+# at run time. Without it you get the middle row above, which is not enough
+# to make threading pay. With it, and OMP_NUM_THREADS=2, the 1D benchmarks
+# go from 10.92 s to 7.24 s (1d_serial) and 8.12 s to 6.75 s (1d_mpi). The
+# 3D cases are still slower threaded than serial -- they carry 16 !$OMP
+# ATOMIC updates per macroparticle in getSource_3D plus roughly twice the
+# barriers -- so this is not yet a reason to thread 3D runs.
+#
+# Also note threaded runs are NOT bit-reproducible: the atomic scatter in
+# getSource makes summation order thread-dependent. Divergence starts at
+# machine epsilon and grows with step count (worst L2rel 1.3e-12 over the
+# 6000-step 1D deck, but 5.5e-10 max relative on signal-carrying nodes by
+# the final dump). The E2E suite asserts to 1e-10, so it must keep running
+# at OMP_NUM_THREADS=1.
+#
+# This is a macOS-specific workaround. On Linux libgomp has futex-backed
+# barriers and none of the above applies; do not enable it there.
+#
+######################################################################
+
+if (USE_LLVM_OPENMP)
+    if (NOT APPLE)
+        message(FATAL_ERROR
+            "USE_LLVM_OPENMP is a macOS-only workaround for Homebrew libgomp's "
+            "sleeping barriers. On this platform the compiler's own OpenMP "
+            "runtime is fine -- leave it OFF.")
+    endif()
+    if (NOT CMAKE_Fortran_COMPILER_ID STREQUAL "GNU")
+        message(FATAL_ERROR
+            "USE_LLVM_OPENMP assumes gfortran (it relies on libomp providing the "
+            "GOMP_* ABI that gfortran emits). Fortran compiler here is "
+            "'${CMAKE_Fortran_COMPILER_ID}' -- leave it OFF.")
+    endif()
+
+    find_library(LIBOMP_LIBRARY
+        NAMES omp
+        HINTS ${LIBOMP_ROOT}/lib
+              /opt/homebrew/opt/libomp/lib
+              /usr/local/opt/libomp/lib
+        DOC "LLVM OpenMP runtime (brew install libomp)")
+
+    if (NOT LIBOMP_LIBRARY)
+        message(FATAL_ERROR
+            "USE_LLVM_OPENMP=ON but libomp was not found. Install it with "
+            "'brew install libomp', or point LIBOMP_ROOT at its prefix.")
+    endif()
+
+    # -fopenmp must reach the COMPILER but not the LINKER: on the link line it
+    # would drag in libgomp alongside libomp, and two OpenMP runtimes in one
+    # process is undefined behaviour. add_compile_options is compile-only,
+    # unlike CMAKE_Fortran_FLAGS which is used for both.
+    add_compile_options($<$<COMPILE_LANGUAGE:Fortran>:${OpenMP_Fortran_FLAGS}>)
+
+    # Repoint the imported target too, not just our own link lines. Dependencies
+    # carry OpenMP::OpenMP_Fortran in their INTERFACE_LINK_LIBRARIES -- pFUnit
+    # does -- and that resolves to libgomp, so without this the test binaries
+    # end up linked against BOTH runtimes even though puffin itself is clean.
+    #
+    # This has to be a macro rather than a one-shot edit: find_package's
+    # imported targets are directory-scoped, and PFUNITConfig.cmake calls
+    # find_dependency(OpenMP) itself, which recreates the target pointing back
+    # at libgomp in test/'s scope. So test/CMakeLists.txt calls this again
+    # after its find_package(PFUNIT).
+    macro(puffin_force_llvm_openmp)
+        if (USE_LLVM_OPENMP AND TARGET OpenMP::OpenMP_Fortran)
+            set_target_properties(OpenMP::OpenMP_Fortran PROPERTIES
+                INTERFACE_LINK_LIBRARIES "${LIBOMP_LIBRARY}")
+        endif()
+    endmacro()
+
+    puffin_force_llvm_openmp()
+
+    message(STATUS "OpenMP runtime : LLVM libomp (${LIBOMP_LIBRARY})")
+    message(STATUS "                 remember to set KMP_BLOCKTIME=infinite at run time")
+elseif (OpenMP_FOUND)
     set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
     set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
     set (CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${OpenMP_Fortran_FLAGS}")
+    message(STATUS "OpenMP runtime : compiler default (${CMAKE_Fortran_COMPILER_ID})")
 endif()
 
 if (ENABLE_LINT)
