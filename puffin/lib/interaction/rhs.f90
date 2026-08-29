@@ -16,14 +16,14 @@ use puffin_kinds, only: WP, IP
 use ArrayFunctions, only: tErrorLog_G, log_error
 use Globals, only: NX_G, NY_G, NZ2_G, ntrndsi_G, nspinDX, nspinDY, sLengthOfElmX_G, &
   sLengthOfElmY_G, sLengthOfElmZ2_G, procelectrons_G, iNumberElectrons_G, qElectronsEvolve_G, &
-  qFieldEvolve_G, qElectronFieldCoupling_G
-use Equations, only: dppdz_r_f, dppdz_i_f, dgamdz_f, dxdz_f, dydz_f, dz2dz_f, alct_e_srtcts, &
+  qFieldEvolve_G, qElectronFieldCoupling_G, s_chi_bar_G, fieldMesh, iTemporal
+use Equations, only: alct_e_srtcts, &
   dalct_e_srtcts, adjundplace, sInv2rho, sp2, sField4ElecReal, sField4ElecImag, bxu, byu, bzu
 use wigglerVar, only: getalpha
-use FiElec1D, only: getinterps_1d, getffelecs_1d, getsource_1d
-use FiElec, only: getinterps_3d, getffelecs_3d, getsource_3d
-use gtop2, only: getp2
-use ParaField, only: fz2, tTransInfo_G
+use rhs_kernels, only: prep_kernel_1D, prep_kernel_3D, source_kernel_1D, &
+  source_kernel_3D, gather_kernel_1D, gather_kernel_3D, zero_efield_kernel, &
+  equation_kernel
+use ParaField, only: fz2, bz2, tTransInfo_G
 use bfields, only: getbfields
 use GlobalTypes, only: tUndulator, tFELFrame, tSimulationContext
 
@@ -74,8 +74,8 @@ contains
                     sDADzr, sDADzi, &
                     qOK, ctx)
 
-  use rhs_vars, only: p_nodes, halfx, halfy, lis_GR, dx, dy, dz2, sp2, sField4ElecReal, &
-    sField4ElecImag, bxu, byu, bzu, WP, IP
+  use rhs_vars, only: p_nodes, halfx, halfy, lis_GR, dx, dy, dz2, dV3, sInv2rho, sp2, &
+    sField4ElecReal, sField4ElecImag, bxu, byu, bzu, WP, IP
 
   implicit none (type, external)
 
@@ -103,6 +103,7 @@ contains
   type(tSimulationContext), intent(inout) :: ctx
 
   logical :: qOKL
+  logical :: qCoupleOK
 
 !     Begin
 
@@ -126,11 +127,6 @@ contains
     allocate(lis_GR(8,iNumberElectrons_G))
   end if
 
-!     Initialise right hand side to zero
-
-  sField4ElecReal = 0.0_WP
-  sField4ElecImag = 0.0_WP
-
   call rhs_tmsavers(sz, ctx%und, ctx%frame)  ! This can be moved later...
 
 !     Adjust undulator tuning
@@ -142,118 +138,116 @@ contains
 
 !$OMP PARALLEL
 
-  call getP2(sp2, sgam, spr, spi, ctx%frame%eta, ctx%frame%gamma_ref, ctx%frame%aw)
-
-
-
+!     Pass 1: p2, mesh node index, interpolation weights, bounds flags.
+!     One worksharing loop for the lot -- see rhs_kernels.
 
   if (tTransInfo_G%qOneD) then
 
-
-
-!$OMP WORKSHARE
-
-    p_nodes = int(sz2 / dz2, kind=ip) + 1_IP - (fz2-1)
-
-!$OMP END WORKSHARE
+    call prep_kernel_1D(sz2, spr, spi, sgam, sp2, p_nodes, lis_GR,          &
+                        ctx%frame%eta, ctx%frame%gamma_ref, ctx%frame%aw,   &
+                        dz2, fz2, bz2, NZ2_G,                               &
+                        (fieldMesh == iTemporal), ctx%flags,                &
+                        procelectrons_G(1))
 
   else
 
-!$OMP WORKSHARE
-
-!    p_nodes = (floor( (sx+halfx)  / dx)  + 1_IP) + &
-!              (floor( (sy+halfy)  / dy) * ReducedNX_G )  + &   !  y 'slices' before primary node
-!              (ReducedNX_G * ReducedNY_G * &
-!                              floor(sz2  / dz2) ) - &
-!                              (fz2-1)*ntrnds_G  ! transverse slices before primary node
-
-    p_nodes = (int( (sx+halfx)  / dx, kind=ip)  + 1_IP) + &
-              (int( (sy+halfy)  / dy, kind=ip) * nspinDX )  + &   !  y 'slices' before primary node
-              (nspinDX * nspinDY * &
-                              int(sz2  / dz2, kind=ip) ) - &
-                              (fz2-1)*ntrndsi_G  ! transverse slices before primary node
-
-!$OMP END WORKSHARE
+    call prep_kernel_3D(sx, sy, sz2, spr, spi, sgam, sp2, p_nodes, lis_GR,  &
+                        ctx%frame%eta, ctx%frame%gamma_ref, ctx%frame%aw,   &
+                        dx, dy, dz2, halfx, halfy,                          &
+                        nspinDX, nspinDY, ntrndsi_G, fz2, bz2, NZ2_G,       &
+                        (fieldMesh == iTemporal), ctx%flags,                &
+                        procelectrons_G(1))
 
   end if
 
-
-
+!     The prep loop's closing barrier has run, so every thread now sees the
+!     settled bounds flags. If any macroparticle fell outside the parallel
+!     field bounds we skip the gather and the scatter for all of them, exactly
+!     as the unfused chain did.
 
   if (tTransInfo_G%qOneD) then
+    qCoupleOK = ctx%flags%parallel_arrays_ok
+  else
+    qCoupleOK = (ctx%flags%parallel_arrays_ok) .and. (ctx%flags%inner_xy_ok)
+  end if
 
-    call getInterps_1D(sz2, ctx%flags)
-    if (ctx%flags%parallel_arrays_ok) then
-      call getFFelecs_1D(sAr, sAi)
-      call getSource_1D(sDADzr, sDADzi, spr, spi, sgam, ctx%frame%eta)
+!     b-fields still cost three worksharing loops of their own. They only read
+!     sx/sy, so hoisting them above the field coupling changes nothing.
+
+  if (qElectronsEvolve_G) then
+
+    call getBFields(sx, sy, sz, &
+                    bxu, byu, bzu, ctx%und, ctx%frame)
+
+  end if
+
+!     Pass 2 is three worksharing loops that cost one barrier between them.
+!     They are kept apart so each stays vectorisable: the scatter carries
+!     !$OMP ATOMIC, the gather/zero choice is a branch, and the equations must
+!     be branchless. See rhs_kernels for why fusing them was slower.
+!
+!     The NOWAIT chain relies on every loop here having the same trip count and
+!     an explicit SCHEDULE(STATIC), so a thread reads back only its own writes.
+
+!     Pass 2a: scatter this rank's source term onto the mesh.
+
+  if (qCoupleOK) then
+
+    if (tTransInfo_G%qOneD) then
+
+      call source_kernel_1D(sDADzr, sDADzi, spr, spi, sgam, sp2,            &
+                            s_chi_bar_G, p_nodes, lis_GR, dV3,              &
+                            ctx%frame%eta, procelectrons_G(1))
+
+    else
+
+      call source_kernel_3D(sDADzr, sDADzi, spr, spi, sgam, sp2,            &
+                            s_chi_bar_G, p_nodes, lis_GR, dV3,              &
+                            ctx%frame%eta, nspinDX, ntrndsi_G,              &
+                            procelectrons_G(1))
+
+    end if
+
+  end if
+
+!     Pass 2b: gather the field onto the macroparticles. Exactly one of these
+!     branches runs and each writes every element, so the arrays need no
+!     separate pre-zeroing.
+
+  if (qCoupleOK .and. qElectronFieldCoupling_G) then
+
+    if (tTransInfo_G%qOneD) then
+
+      call gather_kernel_1D(sAr, sAi, sField4ElecReal, sField4ElecImag,     &
+                            p_nodes, lis_GR, procelectrons_G(1))
+
+    else
+
+      call gather_kernel_3D(sAr, sAi, sField4ElecReal, sField4ElecImag,     &
+                            p_nodes, lis_GR, nspinDX, ntrndsi_G,            &
+                            procelectrons_G(1))
+
     end if
 
   else
 
-    call getInterps_3D(sx, sy, sz2, ctx%flags)
-    if ((ctx%flags%parallel_arrays_ok) .and. (ctx%flags%inner_xy_ok)) then
-      call getFFelecs_3D(sAr, sAi)
-      call getSource_3D(sDADzr, sDADzi, spr, spi, sgam, ctx%frame%eta)
-    end if
+    call zero_efield_kernel(sField4ElecReal, sField4ElecImag, &
+                            procelectrons_G(1))
 
   end if
 
+!     Pass 2c: the six electron equations.
 
+  if (qElectronsEvolve_G) then
 
-!    IF (ioutside>0) THEN
-!       Print*, 'WARNING: ',ioutside,&
-!            ' electrons are outside the inner driving core'
-!    END IF
+    call equation_kernel(spr, spi, sgam, sp2,                               &
+                         sField4ElecReal, sField4ElecImag,                  &
+                         bxu, byu, bzu,                                     &
+                         sdx, sdy, sdz2, sdpr, sdpi, sdgam,                 &
+                         sInv2rho, ctx%frame%eta, ctx%frame%kappa,          &
+                         ctx%frame%rho, ctx%und%n2col, procelectrons_G(1))
 
-
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!      Calculate electron d/dz of electron equations - if needed
-
-  if (.not. qElectronFieldCoupling_G) then
-    sField4ElecReal = 0.0_WP
-    sField4ElecImag = 0.0_WP
   end if
-
-
-    if (qElectronsEvolve_G) then
-
-        call getBFields(sx, sy, sz, &
-                        bxu, byu, bzu, ctx%und, ctx%frame)
-
-!     z2
-
-        CALL dz2dz_f(sx, sy, sz2, spr, spi, sgam, &
-                     sdz2)
-
-!     X
-
-        call dxdz_f(sx, sy, sz2, spr, spi, sgam, &
-                    sdx, ctx%frame)
-
-!     Y
-
-        call dydz_f(sx, sy, sz2, spr, spi, sgam, &
-                    sdy, ctx%frame)
-
-
-!     PX (Real pperp)
-
-        call dppdz_r_f(sx, sy, sz2, spr, spi, sgam, sZ, &
-                       sdpr, ctx%und, ctx%frame)
-
-!     -PY (Imaginary pperp)
-
-        call dppdz_i_f(sx, sy, sz2, spr, spi, sgam, sz, &
-                       sdpi, ctx%und, ctx%frame)
-
-!     P2
-
-        call dgamdz_f(sx, sy, sz2, spr, spi, sgam, &
-                     sdgam, ctx%frame)
-
-    end if
-
-
 
 !$OMP END PARALLEL
 

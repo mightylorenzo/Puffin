@@ -6,7 +6,7 @@ module RK4int
 
    use puffin_mpiInfo, only: ip
    use Globals, only: NX_G, NY_G, ntrndsi_G, iNumberElectrons_G, sElX_G, sElY_G, sElZ2_G, &
-     sElPX_G, sElPY_G, sElGam_G, dadz_w, WP
+     sElPX_G, sElPY_G, sElGam_G, WP
    use Derivative, only: derivs
    use IO, only: tErrorLog_G, log_error
    use ParaField, only: tllen, upd8a, inner2outer, outer2inner
@@ -417,8 +417,6 @@ contains
       allocate(dpz2m(iNumberElectrons_G), &
          dpz2t(iNumberElectrons_G), pz2t(iNumberElectrons_G))
 
-      allocate(dadz_w(iNumberElectrons_G))
-
       call outer2Inner(ac_rfield_in, ac_ifield_in)
 
    end subroutine allact_rk4_arrs
@@ -460,8 +458,6 @@ contains
          dz2t, z2t)
       deallocate(dpz2m, &
          dpz2t, pz2t)
-
-      deallocate(dadz_w)
 
    end subroutine deallact_rk4_arrs
 

@@ -19,7 +19,7 @@ use puffin_constants, only: c, iY_CG, iPX_CG, pi, iPY_CG, iGam_CG, iZ2_CG, q_e, 
 implicit none (type, external)
 private
 
-public :: ata_G, c, chic_disp, chic_slip, chic_zbar, cmd_call_G, dadz_w, delmz, delta_G, diffStep, &
+public :: ata_G, c, chic_disp, chic_slip, chic_zbar, cmd_call_G, delmz, delta_G, diffStep, &
            drift_zbar, dz2_I_G, enmod_mag, enmod_wavenum, fdispls, ffact, fieldMesh, fillFact_G, &
            frecvs, fx_G, fy_G, gExtEj_G, iCount, iFieldSeedType_G, iGam_CG, iGenHom_G, &
            iGloNumElectrons_G, iInputType_G, iIntWriteNthSteps, iNodesPerElement_G, &
@@ -163,7 +163,6 @@ integer(kind=ip) :: TrLdMeth_G
 
 
 
-real(kind=wp), allocatable     :: dadz_w(:)
 
 
 
