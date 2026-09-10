@@ -31,7 +31,13 @@ same hues re-stepped for a dark background, not an automatic inversion.
 
 import os
 
-FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif'
+# Inter when the page shell has loaded it (see puffin_ui_style.page_template),
+# the platform UI face otherwise. The fallback is not a formality: an
+# air-gapped cluster never fetches the webfont, and the stack has to look
+# deliberate without it. Everything that draws text — the Bokeh plot theme,
+# the viewer headers, the run UI — reads this one value.
+FONT = ("Inter, system-ui, -apple-system, 'Segoe UI', Roboto, "
+        "'Helvetica Neue', Arial, sans-serif")
 
 _LIGHT = dict(
     mode='light',

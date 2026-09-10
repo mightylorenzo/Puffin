@@ -20,6 +20,7 @@ from bokeh.models import Button, Div, InlineStyleSheet
 from bokeh.layouts import row
 
 import puffin_viz_theme as pvt
+import puffin_ui_style as pus
 
 # Frames per second. The server side of a step is cheap (~16 ms for the 1D
 # viewer, ~1 ms for 3D); what actually limits the top end is pushing a
@@ -30,26 +31,13 @@ DEFAULT_SPEED = 3          # → 4 fps
 
 
 def _btn_css(t, accent=False):
-    """Button chrome from the theme tokens, so dark mode carries too."""
-    bg     = t['field'] if accent else t['surface']
-    fg     = '#ffffff'   if accent else t['ink2']
-    border = t['field'] if accent else t['axis']
-    hover  = t['field'] if accent else t['grid']
-    return InlineStyleSheet(css=f"""
-      .bk-btn {{
-        background: {bg};
-        color: {fg};
-        border: 1px solid {border};
-        border-radius: 6px;
-        font-family: {pvt.FONT};
-        font-size: 12px;
-        font-weight: 500;
-        padding: 5px 12px;
-        transition: background 120ms ease, color 120ms ease;
-      }}
-      .bk-btn:hover {{ background: {hover}; color: {t['ink'] if not accent else '#ffffff'}; }}
-      .bk-btn:disabled {{ opacity: .4; }}
-    """)
+    """Transport button chrome, from the shared design system.
+
+    The player predates that module and had its own copy; keeping one here
+    would mean the viewer's buttons drifted from the run UI's the next time
+    either changed.
+    """
+    return pus.button_css(t, 'go' if accent else 'plain')
 
 
 class Player:

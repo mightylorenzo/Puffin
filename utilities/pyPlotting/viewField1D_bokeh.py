@@ -27,6 +27,7 @@ from bokeh.layouts import column, row
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import puffin_viz_theme as pvt
+import puffin_ui_style as pus
 import puffin_viz_player as pvp
 import puffin_viz_data as pvd
 
@@ -360,7 +361,9 @@ SLIDER_INSET = 90      # left margin keeping the slider off the window edge
 
 T = pvt.tokens()
 curdoc().theme = pvt.bokeh_theme(T)
-pvt.apply_page_style(curdoc(), T)
+# Same page shell as the run UI: webfont, tokens, scrollbars — so the
+# viewer and the launcher read as one tool rather than two.
+pus.apply(curdoc(), T)
 
 
 def _hover(fig, renderer, xlab, xfmt, ylab, yfmt):
@@ -774,7 +777,8 @@ def _on_units(attr, old, new):
     apply_units()
 
 
-units_btn = RadioButtonGroup(labels=['Scaled', 'SI'], active=pvd.SI, width=170)
+units_btn = RadioButtonGroup(labels=['Scaled', 'SI'], active=pvd.SI, width=170,
+                             stylesheets=[pus.radio_css(T)])
 units_btn.on_change('active', _on_units)
 
 

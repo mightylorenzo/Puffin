@@ -23,6 +23,7 @@ from bokeh.palettes import Inferno256
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import puffin_viz_theme as pvt
+import puffin_ui_style as pus
 import puffin_viz_player as pvp
 import puffin_viz_data as pvd
 
@@ -300,7 +301,9 @@ SLIDER_INSET = 90   # left margin keeping the slider off the window edge
 
 T = pvt.tokens()
 curdoc().theme = pvt.bokeh_theme(T)
-pvt.apply_page_style(curdoc(), T)
+# Same page shell as the run UI: webfont, tokens, scrollbars — so the
+# viewer and the launcher read as one tool rather than two.
+pus.apply(curdoc(), T)
 
 _lo_f, _hi_f = clim(fi0)
 _lo_i, _hi_i = clim(ii0)
@@ -445,7 +448,8 @@ p_tprof.add_layout(slice_span)
 # ── x-y slice controls ────────────────────────────────────────────────────────
 xy_mode_btn = RadioButtonGroup(
     labels=['Peak slice', 'Manual slice', 'z₂ average'],
-    active=xy_mode, width=330)
+    active=xy_mode, width=330,
+    stylesheets=[pus.radio_css(T)])
 
 xy_slice_sl = Slider(start=0, end=max(NZ2 - 1, 1), value=xy_slice, step=1,
                      # PW less the inset, the mode buttons and the gaps —
@@ -652,7 +656,8 @@ def _on_units(attr, old, new):
     apply_units()
 
 
-units_btn = RadioButtonGroup(labels=['Scaled', 'SI'], active=pvd.SI, width=170)
+units_btn = RadioButtonGroup(labels=['Scaled', 'SI'], active=pvd.SI, width=170,
+                             stylesheets=[pus.radio_css(T)])
 units_btn.on_change('active', _on_units)
 
 
